@@ -1,0 +1,3 @@
+import {request} from './client';
+export type Scene={id:string;projectId:string;scriptId?:string|null;sceneNumber:number;title?:string|null;narration:string;durationMs?:number|null;visualType?:string|null;imagePrompt?:string|null;videoPrompt?:string|null;motionPrompt?:string|null;status:string;updatedAt:string};
+export const scenesApi={list:(projectId:string)=>request<Scene[]>(`/projects/${projectId}/scenes`),approve:(sceneId:string)=>request<Scene>(`/scenes/${sceneId}/approve`,{method:'POST'}),reject:(sceneId:string,comment:string)=>request<Scene>(`/scenes/${sceneId}/reject`,{method:'POST',body:JSON.stringify({comment})}),regenerateVisual:(sceneId:string)=>request(`/scenes/${sceneId}/visuals`,{method:'POST'})};

@@ -1,0 +1,10 @@
+import Link from "next/link";
+export function Badge({children,type='pending'}:{children:React.ReactNode;type?:string}){return <span className={`status ${type}`}><i className="dot"/>{children}</span>}
+export function PageHeader({title,subtitle,action}:{title:string;subtitle?:string;action?:React.ReactNode}){return <div className="titleRow"><div><div className="title">{title}</div>{subtitle&&<div className="sub">{subtitle}</div>}</div>{action}</div>}
+export function Card({children,className=''}:{children:React.ReactNode;className?:string}){return <section className={`card ${className}`}>{children}</section>}
+export function EmptyState({title,body,action}:{title:string;body:string;action?:React.ReactNode}){return <div className="empty"><div className="emptyIcon">—</div><b>{title}</b><div className="sub">{body}</div>{action&&<div style={{marginTop:14}}>{action}</div>}</div>}
+export function ErrorState({title='Something went wrong',body='The operation could not be completed.',retry}:{title?:string;body?:string;retry?:()=>void}){return <div className="errorState"><Badge type="danger">ERROR</Badge><b>{title}</b><div className="sub">{body}</div>{retry&&<button className="btn" onClick={retry}>Retry</button>}</div>}
+export function Progress({value,label}:{value:number;label?:string}){return <div>{label&&<div className="progressMeta"><span>{label}</span><span>{value}%</span></div>}<div className="progress"><i style={{width:`${Math.max(0,Math.min(100,value))}%`}}/></div></div>}
+export function Stat({label,value,detail}:{label:string;value:string;detail?:string}){return <Card><div className="label">{label}</div><div className="metric">{value}</div>{detail&&<div className="sub">{detail}</div>}</Card>}
+export function Table({headers,rows}:{headers:string[];rows:React.ReactNode[][]}){return <table className="table"><thead><tr>{headers.map(h=><th key={h}>{h}</th>)}</tr></thead><tbody>{rows.map((r,i)=><tr key={i}>{r.map((c,j)=><td key={j}>{c}</td>)}</tr>)}</tbody></table>}
+export function ActionLink({href,children}:{href:string;children:React.ReactNode}){return <Link className="btn" href={href}>{children}</Link>}
