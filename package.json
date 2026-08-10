@@ -8,8 +8,9 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/server.js",
-    "worker": "tsx src/worker.ts",
+    "start": "node dist/src/server.js",
+    "worker": "node dist/src/worker.js",
+    "worker:dev": "tsx src/worker.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "prisma:generate": "prisma generate",
