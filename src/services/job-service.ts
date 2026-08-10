@@ -1,6 +1,6 @@
 import { JobStatus, JobType, Prisma } from "@prisma/client";
 import { prisma } from "../db/prisma.js";
-import { JobError, NotFoundError } from "../api/errors.js";
+import { ConflictError, JobError, NotFoundError } from "../api/errors.js";
 
 export interface EnqueueJobInput {
   projectId?: string;
@@ -44,10 +44,7 @@ export class JobService {
   async claimJob(): Promise<Awaited<ReturnType<typeof prisma.job.findUnique>> | null> {
     const now = new Date();
     const candidate = await prisma.job.findFirst({
-      where: {
-        status: JobStatus.QUEUED,
-        OR: [{ scheduledAt: null }, { scheduledAt: { lte: now } }],
-      },
+      where: { status: JobStatus.QUEUED, OR: [{ scheduledAt: null }, { scheduledAt: { lte: now } }] },
       orderBy: [{ priority: "desc" }, { createdAt: "asc" }],
     });
     if (!candidate) return null;
@@ -56,7 +53,6 @@ export class JobService {
       where: { id: candidate.id, status: JobStatus.QUEUED },
       data: { status: JobStatus.RUNNING, startedAt: now, attempts: { increment: 1 } },
     });
-
     if (claimed.count !== 1) return null;
     return prisma.job.findUnique({ where: { id: candidate.id } });
   }
@@ -78,21 +74,16 @@ export class JobService {
     const nextStatus = job.attempts < job.maxAttempts ? JobStatus.QUEUED : JobStatus.FAILED;
     return prisma.job.update({
       where: { id: jobId },
-      data: {
-        status: nextStatus,
-        errorMessage,
-        finishedAt: nextStatus === JobStatus.FAILED ? new Date() : null,
-      },
+      data: { status: nextStatus, errorMessage, finishedAt: nextStatus === JobStatus.FAILED ? new Date() : null },
     });
   }
 
   async failJob(jobId: string, errorMessage: string) {
-    return this.retryJob(jobId, errorMessage).then(async (job) => {
-      if (job.status !== JobStatus.FAILED) {
-        return prisma.job.update({ where: { id: jobId }, data: { status: JobStatus.FAILED, finishedAt: new Date() } });
-      }
-      return job;
-    });
+    const job = await this.retryJob(jobId, errorMessage);
+    if (job.status !== JobStatus.FAILED) {
+      return prisma.job.update({ where: { id: jobId }, data: { status: JobStatus.FAILED, finishedAt: new Date() } });
+    }
+    return job;
   }
 
   async cancelJob(jobId: string) {
