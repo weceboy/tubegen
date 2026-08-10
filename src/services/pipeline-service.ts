@@ -1,0 +1,101 @@
+import { JobType, Prisma, ProjectStatus, StageStatus } from "@prisma/client";
+import { prisma } from "../db/prisma.js";
+import { jobService } from "./job-service.js";
+
+const nextVersion = async (projectId: string, model: "script" | "voiceover" | "timeline" | "render" | "thumbnail" | "metadata") => {
+  const rows = await (prisma[model] as any).findMany({ where: { projectId }, orderBy: { version: "desc" }, take: 1 });
+  return (rows[0]?.version ?? 0) + 1;
+};
+
+export class PipelineService {
+  async start(projectId: string) {
+    const project = await prisma.project.findUnique({ where: { id: projectId } });
+    if (!project) throw new Error(`Project ${projectId} not found.`);
+    await prisma.project.update({ where: { id: projectId }, data: { status: ProjectStatus.RESEARCHING, currentStage: "RESEARCH" } });
+    return jobService.enqueueJob({ projectId, type: JobType.RESEARCH, payload: { projectId }, idempotencyKey: `pipeline:${projectId}:research` });
+  }
+
+  async research(projectId: string, result: { summary: string; recommendedAngle: string; keywords: string[]; facts: unknown[]; sources: Array<{ url: string; title?: string; domain?: string; excerpt?: string }> }) {
+    const research = await prisma.research.upsert({
+      where: { projectId },
+      create: { projectId, summary: result.summary, recommendedAngle: result.recommendedAngle, keywords: result.keywords, facts: result.facts, status: StageStatus.APPROVED },
+      update: { version: { increment: 1 }, summary: result.summary, recommendedAngle: result.recommendedAngle, keywords: result.keywords, facts: result.facts, status: StageStatus.APPROVED },
+    });
+    await prisma.source.deleteMany({ where: { researchId: research.id } });
+    if (result.sources.length) await prisma.source.createMany({ data: result.sources.map((s) => ({ researchId: research.id, url: s.url, title: s.title, domain: s.domain, excerpt: s.excerpt })) });
+    await prisma.project.update({ where: { id: projectId }, data: { status: ProjectStatus.SCRIPTING, currentStage: "CONTENT_BRIEF" } });
+    return jobService.enqueueJob({ projectId, type: JobType.GENERATE_BRIEF, payload: { projectId }, idempotencyKey: `pipeline:${projectId}:brief` });
+  }
+
+  async brief(projectId: string, input: { title: string; hook: string; promise: string; audience: string; structure: unknown }) {
+    await prisma.contentBrief.upsert({ where: { projectId }, create: { projectId, title: input.title, hook: input.hook, promise: input.promise, audience: input.audience, structure: input.structure as Prisma.InputJsonValue, status: StageStatus.APPROVED }, update: { version: { increment: 1 }, title: input.title, hook: input.hook, promise: input.promise, audience: input.audience, structure: input.structure as Prisma.InputJsonValue, status: StageStatus.APPROVED } });
+    return jobService.enqueueJob({ projectId, type: JobType.GENERATE_SCRIPT, payload: { projectId }, idempotencyKey: `pipeline:${projectId}:script` });
+  }
+
+  async script(projectId: string, input: { title: string; language: string; body: string; targetDurationSec?: number }) {
+    const version = await nextVersion(projectId, "script");
+    const wordCount = input.body.trim() ? input.body.trim().split(/\s+/).length : 0;
+    const script = await prisma.script.create({ data: { projectId, version, title: input.title, language: input.language, body: input.body, targetDurationSec: input.targetDurationSec, wordCount, status: StageStatus.APPROVED } });
+    await prisma.project.update({ where: { id: projectId }, data: { status: ProjectStatus.PRODUCING, currentStage: "SCENE_BREAKDOWN" } });
+    return jobService.enqueueJob({ projectId, type: JobType.BREAKDOWN_SCENES, payload: { projectId, scriptId: script.id }, idempotencyKey: `pipeline:${projectId}:scenes:${script.id}` });
+  }
+
+  async scenes(projectId: string, scriptId: string, scenes: Array<{ sceneNumber: number; title?: string; narration: string; durationMs?: number; imagePrompt?: string; videoPrompt?: string; motionPrompt?: string }>) {
+    for (const input of scenes) {
+      const scene = await prisma.scene.upsert({ where: { projectId_sceneNumber: { projectId, sceneNumber: input.sceneNumber } }, create: { projectId, scriptId, ...input, status: StageStatus.APPROVED }, update: { scriptId, ...input, status: StageStatus.APPROVED } });
+      const existing = await prisma.sceneVersion.findFirst({ where: { sceneId: scene.id }, orderBy: { version: "desc" } });
+      await prisma.sceneVersion.create({ data: { sceneId: scene.id, version: (existing?.version ?? 0) + 1, narration: input.narration, durationMs: input.durationMs, imagePrompt: input.imagePrompt, videoPrompt: input.videoPrompt, motionPrompt: input.motionPrompt, status: StageStatus.APPROVED } });
+    }
+    await prisma.project.update({ where: { id: projectId }, data: { currentStage: "VOICEOVER" } });
+    return jobService.enqueueJob({ projectId, type: JobType.GENERATE_VOICEOVER, payload: { projectId }, idempotencyKey: `pipeline:${projectId}:voiceover` });
+  }
+
+  async voiceover(projectId: string, transcript: string, durationMs: number, audioStorageKey: string) {
+    const version = await nextVersion(projectId, "voiceover");
+    const voiceover = await prisma.voiceover.create({ data: { projectId, version, transcript, durationMs, status: StageStatus.APPROVED } });
+    const scenes = await prisma.scene.findMany({ where: { projectId }, orderBy: { sceneNumber: "asc" } });
+    const words = transcript.trim().split(/\s+/).filter(Boolean);
+    const per = Math.max(1, Math.floor(durationMs / Math.max(1, scenes.length)));
+    for (let i = 0; i < scenes.length; i++) {
+      const startMs = i * per; const endMs = i === scenes.length - 1 ? durationMs : (i + 1) * per;
+      await prisma.timestampSegment.create({ data: { voiceoverId: voiceover.id, sceneId: scenes[i].id, startMs, endMs, text: words.slice(Math.floor(i * words.length / scenes.length), Math.floor((i + 1) * words.length / scenes.length)).join(" ") } });
+    }
+    void audioStorageKey;
+    await prisma.project.update({ where: { id: projectId }, data: { currentStage: "VISUALS" } });
+    return jobService.enqueueJob({ projectId, type: JobType.GENERATE_VISUAL, payload: { projectId }, idempotencyKey: `pipeline:${projectId}:visuals` });
+  }
+
+  async visuals(projectId: string) {
+    const scenes = await prisma.scene.findMany({ where: { projectId }, include: { versions: { orderBy: { version: "desc" }, take: 1 } } });
+    for (const scene of scenes) {
+      const version = scene.versions[0];
+      if (!version) continue;
+      const attemptNumber = (await prisma.generationAttempt.count({ where: { sceneVersionId: version.id } })) + 1;
+      const attempt = await prisma.generationAttempt.create({ data: { sceneVersionId: version.id, attemptNumber, provider: "mock", model: "mock-visual-v1", prompt: version.imagePrompt ?? scene.imagePrompt, status: "SUCCEEDED", startedAt: new Date(), finishedAt: new Date() } });
+      const asset = await prisma.asset.create({ data: { generationAttemptId: attempt.id, type: "IMAGE", source: "AI", provider: "mock", providerAssetId: `mock-${attempt.id}`, storageKey: `mock/${projectId}/${scene.sceneNumber}/${attempt.id}.png`, mimeType: "image/png", status: StageStatus.APPROVED, selected: true } });
+      await prisma.sceneAsset.create({ data: { sceneId: scene.id, assetId: asset.id, role: "primary", approved: true } });
+    }
+    await prisma.project.update({ where: { id: projectId }, data: { currentStage: "TIMELINE" } });
+    return jobService.enqueueJob({ projectId, type: JobType.BUILD_TIMELINE, payload: { projectId }, idempotencyKey: `pipeline:${projectId}:timeline` });
+  }
+
+  async timeline(projectId: string) {
+    const version = await nextVersion(projectId, "timeline");
+    const scenes = await prisma.scene.findMany({ where: { projectId }, include: { sceneAssets: { include: { asset: true } } }, orderBy: { sceneNumber: "asc" } });
+    const data = scenes.map((s) => ({ sceneId: s.id, sceneNumber: s.sceneNumber, narration: s.narration, durationMs: s.durationMs ?? 0, assets: s.sceneAssets.map((a) => ({ assetId: a.assetId, role: a.role, startMs: a.startMs, endMs: a.endMs })) }));
+    const timeline = await prisma.timeline.create({ data: { projectId, version, fps: 30, width: 1920, height: 1080, durationMs: scenes.reduce((n, s) => n + (s.durationMs ?? 0), 0), data: data as Prisma.InputJsonValue, status: StageStatus.APPROVED } });
+    await prisma.project.update({ where: { id: projectId }, data: { status: ProjectStatus.RENDERING, currentStage: "RENDER" } });
+    return jobService.enqueueJob({ projectId, type: JobType.RENDER, payload: { projectId, timelineId: timeline.id }, idempotencyKey: `pipeline:${projectId}:render:${timeline.id}` });
+  }
+
+  async render(projectId: string, timelineId: string) {
+    const version = await nextVersion(projectId, "render");
+    const timeline = await prisma.timeline.findUnique({ where: { id: timelineId } });
+    if (!timeline) throw new Error(`Timeline ${timelineId} not found.`);
+    const render = await prisma.render.create({ data: { projectId, timelineId, version, provider: "mock-renderer", status: "SUCCEEDED", storageKey: `mock/renders/${projectId}/${version}.mp4`, mimeType: "video/mp4", durationMs: timeline.durationMs, width: timeline.width, height: timeline.height, finishedAt: new Date() } });
+    await prisma.project.update({ where: { id: projectId }, data: { status: ProjectStatus.REVIEW, currentStage: "APPROVAL" } });
+    return render;
+  }
+}
+
+export const pipelineService = new PipelineService();
