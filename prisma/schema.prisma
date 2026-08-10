@@ -1,0 +1,631 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ProjectStatus {
+  DRAFT
+  RESEARCHING
+  SCRIPTING
+  PRODUCING
+  REVIEW
+  RENDERING
+  READY
+  PUBLISHING
+  PUBLISHED
+  FAILED
+  ARCHIVED
+}
+
+enum StageStatus {
+  PENDING
+  PROCESSING
+  READY_FOR_REVIEW
+  APPROVED
+  REJECTED
+  FAILED
+  SUPERSEDED
+}
+
+enum ArtifactType {
+  RESEARCH
+  CONTENT_BRIEF
+  SCRIPT
+  SCENE_BREAKDOWN
+  VOICEOVER
+  TIMESTAMPS
+  VISUAL_PLAN
+  ASSET
+  MOTION
+  TIMELINE
+  RENDER
+  THUMBNAIL
+  METADATA
+  QA_REPORT
+}
+
+enum AssetType {
+  IMAGE
+  VIDEO
+  AUDIO
+  MUSIC
+  SFX
+  FONT
+  DOCUMENT
+  OTHER
+}
+
+enum AssetSource {
+  AI
+  STOCK
+  UPLOAD
+  GENERATED
+  EXTERNAL
+}
+
+enum GenerationStatus {
+  QUEUED
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum JobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum JobType {
+  RESEARCH
+  GENERATE_BRIEF
+  GENERATE_SCRIPT
+  BREAKDOWN_SCENES
+  GENERATE_VOICEOVER
+  TRANSCRIBE
+  GENERATE_VISUAL
+  GENERATE_VIDEO
+  GENERATE_MOTION
+  BUILD_TIMELINE
+  RENDER
+  GENERATE_THUMBNAIL
+  GENERATE_METADATA
+  QA
+  YOUTUBE_UPLOAD
+}
+
+enum ApprovalStatus {
+  NOT_REQUIRED
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum PublicationStatus {
+  DRAFT
+  UPLOADING
+  PROCESSING
+  SCHEDULED
+  PUBLISHED
+  FAILED
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  channels  Channel[]
+  projects  Project[]
+  approvals Approval[]
+}
+
+model Channel {
+  id               String   @id @default(cuid())
+  ownerId          String
+  name             String
+  handle           String?
+  description      String?
+  language         String   @default("en")
+  niche            String?
+  timezone         String   @default("UTC")
+  brandConfig      Json?
+  automationConfig Json?
+  youtubeChannelId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  owner           User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  projects        Project[]
+  voiceProfiles   VoiceProfile[]
+  motionTemplates MotionTemplate[]
+  publications    Publication[]
+
+  @@index([ownerId])
+}
+
+model Project {
+  id                String        @id @default(cuid())
+  channelId         String
+  ownerId           String
+  name              String
+  topic             String
+  targetLanguage    String        @default("en")
+  targetDurationSec Int?
+  status            ProjectStatus @default(DRAFT)
+  currentStage      String?
+  budgetCents       Int?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  channel      Channel        @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  owner        User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  research     Research?
+  contentBrief ContentBrief?
+  scripts      Script[]
+  scenes       Scene[]
+  voiceovers   Voiceover[]
+  timelines    Timeline[]
+  renders      Render[]
+  thumbnails   Thumbnail[]
+  metadata     VideoMetadata[]
+  publications Publication[]
+  jobs         Job[]
+  artifacts    Artifact[]
+  approvals    Approval[]
+  costEvents   CostEvent[]
+
+  @@index([channelId])
+  @@index([ownerId])
+  @@index([status])
+}
+
+model Research {
+  id               String      @id @default(cuid())
+  projectId        String      @unique
+  version          Int         @default(1)
+  summary          String?
+  recommendedAngle String?
+  keywords         Json?
+  competitorData   Json?
+  contentGaps      Json?
+  facts            Json?
+  status           StageStatus @default(PENDING)
+  createdAt        DateTime    @default(now())
+
+  project Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sources Source[]
+}
+
+model Source {
+  id           String   @id @default(cuid())
+  researchId   String
+  url          String
+  title        String?
+  domain       String?
+  author       String?
+  publishedAt  DateTime?
+  retrievedAt  DateTime @default(now())
+  credibility Float?
+  excerpt      String?
+  metadata     Json?
+
+  research Research @relation(fields: [researchId], references: [id], onDelete: Cascade)
+
+  @@index([researchId])
+}
+
+model ContentBrief {
+  id               String      @id @default(cuid())
+  projectId        String      @unique
+  version          Int         @default(1)
+  title            String?
+  hook             String?
+  promise          String?
+  audience         String?
+  structure        Json?
+  status           StageStatus @default(PENDING)
+  createdAt        DateTime    @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Script {
+  id                String      @id @default(cuid())
+  projectId         String
+  version           Int
+  title             String?
+  language          String
+  body              String
+  targetDurationSec Int?
+  wordCount         Int?
+  status            StageStatus @default(PENDING)
+  createdAt         DateTime    @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  scenes  Scene[]
+
+  @@unique([projectId, version])
+  @@index([projectId, status])
+}
+
+model Scene {
+  id           String      @id @default(cuid())
+  projectId    String
+  scriptId     String?
+  sceneNumber  Int
+  title        String?
+  narration    String
+  durationMs   Int?
+  visualType   String?
+  imagePrompt  String?
+  videoPrompt  String?
+  motionPrompt String?
+  status       StageStatus @default(PENDING)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  project      Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  script       Script?             @relation(fields: [scriptId], references: [id], onDelete: SetNull)
+  versions     SceneVersion[]
+  timestamps   TimestampSegment[]
+  sceneAssets  SceneAsset[]
+  motionClips  MotionClip[]
+
+  @@unique([projectId, sceneNumber])
+  @@index([projectId, status])
+}
+
+model SceneVersion {
+  id           String      @id @default(cuid())
+  sceneId      String
+  version      Int
+  narration    String?
+  imagePrompt  String?
+  videoPrompt  String?
+  motionPrompt String?
+  durationMs   Int?
+  status       StageStatus @default(PENDING)
+  createdAt    DateTime    @default(now())
+
+  scene     Scene              @relation(fields: [sceneId], references: [id], onDelete: Cascade)
+  attempts GenerationAttempt[]
+
+  @@unique([sceneId, version])
+}
+
+model GenerationAttempt {
+  id             String           @id @default(cuid())
+  sceneVersionId String
+  attemptNumber  Int
+  provider       String
+  model          String?
+  prompt         String?
+  negativePrompt String?
+  parameters     Json?
+  status         GenerationStatus @default(QUEUED)
+  errorMessage   String?
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  createdAt      DateTime         @default(now())
+
+  sceneVersion SceneVersion @relation(fields: [sceneVersionId], references: [id], onDelete: Cascade)
+  assets       Asset[]
+
+  @@unique([sceneVersionId, attemptNumber])
+  @@index([status])
+}
+
+model Asset {
+  id                  String           @id @default(cuid())
+  generationAttemptId String?
+  type                AssetType
+  source              AssetSource
+  provider            String?
+  providerAssetId     String?
+  storageKey          String
+  mimeType            String?
+  width               Int?
+  height              Int?
+  durationMs          Int?
+  checksum            String?
+  licenseStatus       String?
+  licenseData        Json?
+  metadata            Json?
+  selected            Boolean          @default(false)
+  status              StageStatus      @default(PENDING)
+  createdAt           DateTime         @default(now())
+
+  generationAttempt GenerationAttempt? @relation(fields: [generationAttemptId], references: [id], onDelete: SetNull)
+  sceneAssets       SceneAsset[]
+  motionClips       MotionClip[]
+  renders           RenderAsset[]
+  voiceovers        Voiceover[]       @relation("VoiceoverAudio")
+  thumbnails        Thumbnail[]       @relation("ThumbnailAsset")
+
+  @@index([generationAttemptId])
+  @@index([type, status])
+}
+
+model SceneAsset {
+  id        String  @id @default(cuid())
+  sceneId   String
+  assetId   String
+  role      String
+  sortOrder Int     @default(0)
+  startMs   Int?
+  endMs     Int?
+  approved  Boolean @default(false)
+
+  scene Scene @relation(fields: [sceneId], references: [id], onDelete: Cascade)
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([sceneId, assetId, role])
+  @@index([sceneId, sortOrder])
+}
+
+model VoiceProfile {
+  id              String  @id @default(cuid())
+  channelId       String
+  name            String
+  provider        String
+  providerVoiceId String
+  language        String
+  settings        Json?
+  active          Boolean @default(true)
+
+  channel   Channel    @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  voiceovers Voiceover[]
+}
+
+model Voiceover {
+  id             String      @id @default(cuid())
+  projectId      String
+  voiceProfileId String?
+  version        Int
+  audioAssetId   String?
+  durationMs     Int?
+  transcript     String?
+  status         StageStatus @default(PENDING)
+  createdAt      DateTime    @default(now())
+
+  project     Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  voiceProfile VoiceProfile? @relation(fields: [voiceProfileId], references: [id], onDelete: SetNull)
+  audioAsset  Asset?        @relation("VoiceoverAudio", fields: [audioAssetId], references: [id], onDelete: SetNull)
+  timestamps  TimestampSegment[]
+
+  @@unique([projectId, version])
+}
+
+model TimestampSegment {
+  id          String @id @default(cuid())
+  voiceoverId String
+  sceneId     String?
+  startMs     Int
+  endMs       Int
+  text        String
+  words       Json?
+
+  voiceover Voiceover @relation(fields: [voiceoverId], references: [id], onDelete: Cascade)
+  scene     Scene?    @relation(fields: [sceneId], references: [id], onDelete: SetNull)
+
+  @@index([voiceoverId, startMs])
+}
+
+model MotionTemplate {
+  id          String  @id @default(cuid())
+  channelId   String?
+  name        String
+  templateKey String
+  version     Int     @default(1)
+  config      Json?
+  active      Boolean @default(true)
+
+  channel     Channel?      @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  motionClips MotionClip[]
+}
+
+model MotionClip {
+  id         String @id @default(cuid())
+  sceneId    String
+  templateId String?
+  assetId    String?
+  startMs    Int
+  endMs      Int
+  props      Json?
+  sortOrder  Int    @default(0)
+
+  scene    Scene           @relation(fields: [sceneId], references: [id], onDelete: Cascade)
+  template MotionTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  asset    Asset?          @relation(fields: [assetId], references: [id], onDelete: SetNull)
+
+  @@index([sceneId, startMs])
+}
+
+model Timeline {
+  id         String      @id @default(cuid())
+  projectId  String
+  version    Int
+  fps        Int         @default(30)
+  width      Int         @default(1920)
+  height     Int         @default(1080)
+  durationMs Int?
+  data       Json
+  status     StageStatus @default(PENDING)
+  createdAt  DateTime    @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  renders Render[]
+
+  @@unique([projectId, version])
+}
+
+model Render {
+  id           String           @id @default(cuid())
+  projectId    String
+  timelineId   String
+  version      Int
+  provider     String?
+  status       GenerationStatus @default(QUEUED)
+  storageKey   String?
+  mimeType     String?
+  durationMs   Int?
+  width        Int?
+  height       Int?
+  errorMessage String?
+  createdAt    DateTime         @default(now())
+  finishedAt   DateTime?
+
+  project  Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  timeline Timeline     @relation(fields: [timelineId], references: [id], onDelete: Cascade)
+  assets   RenderAsset[]
+
+  @@unique([projectId, version])
+}
+
+model RenderAsset {
+  id       String @id @default(cuid())
+  renderId String
+  assetId  String
+  role     String
+
+  render Render @relation(fields: [renderId], references: [id], onDelete: Cascade)
+  asset  Asset  @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([renderId, assetId, role])
+}
+
+model Thumbnail {
+  id        String      @id @default(cuid())
+  projectId String
+  version   Int
+  assetId   String?
+  titleText String?
+  status    StageStatus @default(PENDING)
+  createdAt DateTime    @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  asset   Asset?  @relation("ThumbnailAsset", fields: [assetId], references: [id], onDelete: SetNull)
+
+  @@unique([projectId, version])
+}
+
+model VideoMetadata {
+  id          String      @id @default(cuid())
+  projectId   String
+  version     Int
+  title       String?
+  description String?
+  tags        Json?
+  hashtags    Json?
+  chapters    Json?
+  category    String?
+  language    String?
+  status      StageStatus @default(PENDING)
+  createdAt   DateTime    @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, version])
+}
+
+model Publication {
+  id              String            @id @default(cuid())
+  projectId       String
+  channelId       String
+  platform        String            @default("youtube")
+  externalVideoId String?
+  title           String?
+  visibility      String?
+  scheduledAt     DateTime?
+  publishedAt     DateTime?
+  status          PublicationStatus @default(DRAFT)
+  responseData    Json?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@index([channelId, status])
+}
+
+model Approval {
+  id         String         @id @default(cuid())
+  projectId  String
+  userId     String
+  artifactId String?
+  stage      String
+  status     ApprovalStatus @default(PENDING)
+  comment    String?
+  createdAt  DateTime       @default(now())
+  decidedAt  DateTime?
+
+  project  Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  artifact Artifact? @relation(fields: [artifactId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, stage, status])
+}
+
+model Artifact {
+  id         String       @id @default(cuid())
+  projectId  String
+  type       ArtifactType
+  version    Int          @default(1)
+  status     StageStatus  @default(PENDING)
+  data       Json?
+  storageKey String?
+  createdAt  DateTime     @default(now())
+
+  project   Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  approvals Approval[]
+
+  @@index([projectId, type, version])
+}
+
+model Job {
+  id            String    @id @default(cuid())
+  projectId     String?
+  type          JobType
+  status        JobStatus @default(QUEUED)
+  priority      Int       @default(0)
+  payload       Json
+  result        Json?
+  errorMessage  String?
+  attempts      Int       @default(0)
+  maxAttempts   Int       @default(3)
+  scheduledAt   DateTime?
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  createdAt     DateTime  @default(now())
+
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([status, priority, scheduledAt])
+  @@index([projectId])
+}
+
+model CostEvent {
+  id         String   @id @default(cuid())
+  projectId  String
+  provider   String?
+  operation  String
+  units      Float?
+  costCents  Int
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+}
