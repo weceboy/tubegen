@@ -14,9 +14,29 @@ The system is designed around **versioning, provenance, approvals, retries, and 
 
 The canonical architecture and database decisions are documented in:
 
-- `docs/AGENTS.md` — briefing for all coding agents
-- `docs/database-schema.md` — human-readable database model
-- `prisma/schema.prisma` — canonical Prisma/PostgreSQL schema
+- `docs/AGENTS.md`
+- `docs/database-schema.md`
+- `prisma/schema.prisma`
+- `docs/architecture.md`
+- `docs/development.md`
+
+## Backend foundation
+
+The initial backend layer provides the API server, validation, Prisma integration, PostgreSQL Docker setup, project CRUD, centralized pipeline state transitions, persisted jobs, worker execution, provider interfaces, health endpoints and automated tests.
+
+## Local development
+
+```bash
+cp .env.example .env
+docker compose up -d
+npm install
+npm run prisma:generate
+npm run prisma:validate
+npm run build
+npm test
+```
+
+Start the API with `npm run dev` and the worker with `npm run worker:dev`.
 
 ## Core architectural principle
 
