@@ -1,0 +1,42 @@
+import type { VoiceProvider } from "../voice/provider.js";
+import type { VisualProvider } from "../visual/provider.js";
+import type { RenderProvider } from "../render/provider.js";
+import type { PublishingProvider } from "../publishing/provider.js";
+import type { StorageProvider } from "../storage/provider.js";
+
+export class MockVoiceProvider implements VoiceProvider {
+  async synthesize(input: { text: string; language?: string; voiceId?: string }) {
+    void input.language; void input.voiceId;
+    return { audioStorageKey: `mock/audio/${Date.now()}.mp3`, durationMs: Math.max(1000, input.text.trim().split(/\s+/).length * 450), transcript: input.text, provider: "mock-tts", model: "mock-tts-v1" };
+  }
+}
+
+export class MockVisualProvider implements VisualProvider {
+  async generateImage(input: { prompt: string; negativePrompt?: string; width?: number; height?: number }) {
+    void input.negativePrompt;
+    const width = input.width ?? 1920; const height = input.height ?? 1080;
+    return { storageKey: `mock/images/${Date.now()}.png`, provider: "mock-visual", model: "mock-image-v1", providerAssetId: `mock-${Date.now()}`, mimeType: "image/png", width, height };
+  }
+  async generateVideo(input: { prompt: string; durationMs: number }) {
+    void input.prompt;
+    return { storageKey: `mock/videos/${Date.now()}.mp4`, provider: "mock-video", model: "mock-video-v1", providerAssetId: `mock-${Date.now()}`, mimeType: "video/mp4", durationMs: input.durationMs };
+  }
+}
+
+export class MockRenderProvider implements RenderProvider {
+  async render(input: { projectId: string; timelineId: string; fps: number; width: number; height: number; durationMs?: number }) {
+    return { storageKey: `mock/renders/${input.projectId}/${input.timelineId}.mp4`, provider: "mock-renderer", mimeType: "video/mp4", durationMs: input.durationMs, width: input.width, height: input.height };
+  }
+}
+
+export class MockPublishingProvider implements PublishingProvider {
+  async upload(input: { title: string; description?: string; tags?: string[]; storageKey: string; visibility?: string; scheduledAt?: Date }) {
+    return { externalVideoId: `mock-youtube-${Date.now()}`, status: input.scheduledAt ? "scheduled" : "published", responseData: { provider: "mock-youtube", storageKey: input.storageKey, title: input.title, visibility: input.visibility ?? "private", tags: input.tags ?? [] } };
+  }
+}
+
+export class MockStorageProvider implements StorageProvider {
+  async put(input: { key: string; body: Uint8Array | Buffer; contentType: string }) { void input.body; void input.contentType; return { key: input.key }; }
+  async getSignedUrl(key: string, expiresInSeconds = 3600) { return `mock://storage/${encodeURIComponent(key)}?expires=${expiresInSeconds}`; }
+  async delete(key: string) { void key; }
+}
