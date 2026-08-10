@@ -1,35 +1,16 @@
 {
-  "name": "tubegen",
+  "name": "autodoc",
   "version": "0.1.0",
   "private": true,
-  "description": "TubeGen backend for asynchronous faceless YouTube production pipelines",
   "type": "module",
-  "engines": { "node": ">=20" },
   "scripts": {
-    "dev": "tsx watch src/server.ts",
-    "build": "tsc -p tsconfig.json",
-    "start": "node dist/src/server.js",
-    "worker": "node dist/src/worker.js",
-    "worker:dev": "tsx src/worker.ts",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "prisma:generate": "prisma generate",
-    "prisma:format": "prisma format",
-    "prisma:validate": "prisma validate",
-    "prisma:migrate": "prisma migrate dev",
-    "prisma:seed": "tsx prisma/seed.ts"
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "worker": "node server/worker.js",
+    "worker:render": "node server/production-render-worker.js",
+    "test": "node --test --test-concurrency=1"
   },
   "dependencies": {
-    "@prisma/client": "^6.13.0",
-    "fastify": "^5.4.0",
-    "pino": "^9.9.0",
-    "zod": "^4.0.0"
-  },
-  "devDependencies": {
-    "@types/node": "^22.15.0",
-    "prisma": "^6.13.0",
-    "tsx": "^4.20.3",
-    "typescript": "^5.8.3",
-    "vitest": "^3.2.4"
+    "better-sqlite3": "^11.10.0"
   }
 }
