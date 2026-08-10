@@ -3,10 +3,7 @@ import type { ResearchProvider } from "../research/provider.js";
 
 export class MockLLMProvider implements LLMProvider {
   async generateText(input: { prompt: string; language?: string }) {
-    return {
-      text: `Mock generation for: ${input.prompt.slice(0, 120)}`,
-      model: "mock-llm-v1",
-    };
+    return { text: `Mock generation for: ${input.prompt.slice(0, 120)}`, model: "mock-llm-v1" };
   }
 
   async generateStructuredOutput<T>(input: { prompt: string; schema: unknown }) {
@@ -16,12 +13,12 @@ export class MockLLMProvider implements LLMProvider {
 }
 
 export class MockResearchProvider implements ResearchProvider {
-  async search(query: string) {
-    return [{ url: `https://example.invalid/research/${encodeURIComponent(query)}`, title: `Mock source for ${query}`, domain: "example.invalid" }];
+  async search(_query: string) {
+    return [];
   }
 
   async retrieve(url: string) {
-    return { url, title: "Mock source", excerpt: "Synthetic development-only research source." };
+    return { url, title: "Mock source", excerpt: "Synthetic development-only research content." };
   }
 
   async analyze(input: { topic: string; sources: unknown[] }) {
