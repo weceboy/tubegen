@@ -5,6 +5,7 @@ import { logger } from "../config/logger.js";
 import { AppError } from "./errors.js";
 import { projectRoutes } from "./routes/project-routes.js";
 import { jobRoutes } from "./routes/job-routes.js";
+import { channelRoutes } from "./routes/channel-routes.js";
 
 export function buildApp() {
   const app = Fastify({ loggerInstance: logger });
@@ -22,6 +23,7 @@ export function buildApp() {
 
   app.get("/health/workers", async () => ({ status: "ok", workerModel: "database-backed" }));
 
+  app.register(channelRoutes);
   app.register(projectRoutes);
   app.register(jobRoutes);
 
